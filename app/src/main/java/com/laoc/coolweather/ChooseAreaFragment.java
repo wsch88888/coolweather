@@ -19,18 +19,19 @@ import android.widget.Toast;
 import com.laoc.coolweather.db.City;
 import com.laoc.coolweather.db.County;
 import com.laoc.coolweather.db.Province;
-import com.laoc.coolweather.util.HttpUtil;
+import com.laoc.coolweather.util.HttpAPIS;
 import com.laoc.coolweather.util.Utility;
 
 import org.litepal.crud.DataSupport;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.Response;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
 
 /**
  * A simple {@link Fragment} subclass.
@@ -56,6 +57,8 @@ public class ChooseAreaFragment extends Fragment {
     private City selectedCity;
     private int currentLevel;
 
+    private HttpAPIS httpAPIS;
+
     public ChooseAreaFragment() {
         // Required empty public constructor
     }
@@ -76,6 +79,9 @@ public class ChooseAreaFragment extends Fragment {
     @Override
     public void onActivityCreated(@Nullable Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
+
+
+
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -86,7 +92,7 @@ public class ChooseAreaFragment extends Fragment {
                     selectedCity = cityList.get(position);
                     queryCounties();
                 }else if (currentLevel == LEVEL_COUNTY){
-                    String weatherId = countyList.get(position).getWeatherId();
+                    String weatherId = countyList.get(position).getWeather_id();
                     if (getActivity() instanceof  MainActivity){
                         Intent intent = new Intent(getActivity(),WeatherActivity.class);
                         intent.putExtra("weather_id",weatherId);
@@ -120,88 +126,116 @@ public class ChooseAreaFragment extends Fragment {
         if (provinceList.size() > 0){
             dataList.clear();
             for (Province province : provinceList){
-                dataList.add(province.getProvinceName());
+                dataList.add(province.getName());
             }
             adapter.notifyDataSetChanged();
             listView.setSelection(0);
             currentLevel = LEVEL_PROVINCE;
         }else {
-            String address = "http://guolin.tech/api/china";
-            queryFromServer(address,"province");
+//            String address = "http://guolin.tech/api/china";
+//            queryFromServer(address,"province");
+            queryArea();
         }
     }
 
     private void queryCities(){
-        titleText.setText(selectedProvince.getProvinceName());
+        titleText.setText(selectedProvince.getName());
         backButton.setVisibility(View.VISIBLE);
         cityList = DataSupport.where("provinceid = ?",String.valueOf(selectedProvince.getId())).find(City.class);
         if (cityList.size() > 0){
             dataList.clear();
             for (City city : cityList){
-                dataList.add(city.getCityName());
+                dataList.add(city.getName());
             }
             adapter.notifyDataSetChanged();
             listView.setSelection(0);
             currentLevel = LEVEL_CITY;
         }else {
-            int provinceCode = selectedProvince.getProvinceCode();
-            String address = "http://guolin.tech/api/china/" + provinceCode;
-            queryFromServer(address,"city");
+            queryArea(selectedProvince.getId());
         }
     }
 
     private void queryCounties(){
-        titleText.setText(selectedCity.getCityName());
+        titleText.setText(selectedCity.getName());
         backButton.setVisibility(View.VISIBLE);
         countyList = DataSupport.where("cityid = ?",String.valueOf(selectedCity.getId())).find(County.class);
         if (countyList.size() > 0){
             dataList.clear();
             for (County county : countyList){
-                dataList.add(county.getCountyName());
+                dataList.add(county.getName());
             }
             adapter.notifyDataSetChanged();
             listView.setSelection(0);
             currentLevel = LEVEL_COUNTY;
         }else {
-            int provinceCode = selectedProvince.getProvinceCode();
-            int cityCode = selectedCity.getCityCode();
-            String address = "http://guolin.tech/api/china/" + provinceCode + "/" + cityCode;
-            queryFromServer(address,"county");
+            int provinceCode = selectedProvince.getId();
+            int cityCode = selectedCity.getId();
+            queryArea(provinceCode,cityCode);
         }
     }
 
-    private void queryFromServer(String address,final String type){
+//    private void queryFromServer(String address,final String type){
+//
+//        showProgressDialog();
+//        HttpUtil.sendOkHttpRequest(address, new Callback() {
+//            @Override
+//            public void onResponse(Call call, Response response) throws IOException {
+//                String responseText = response.body().string();
+//                boolean result = false;
+//                if ("province".equals(type)){
+//                    result = Utility.handleProvinceResponse(responseText);
+//                }else if ("city".equals(type)){
+//                    result = Utility.handleCityResponse(responseText,selectedProvince.getId());
+//                }else if ("county".equals(type)){
+//                    result = Utility.handleCountyResponse(responseText,selectedCity.getId());
+//                }
+//                if (result){
+//                    getActivity().runOnUiThread(new Runnable() {
+//                        @Override
+//                        public void run() {
+//                            closeProgressDialog();
+//                            if ("province".equals(type))
+//                                queryProvinces();
+//                            else if ("city".equals(type))
+//                                queryCities();
+//                            else if ("county".equals(type))
+//                                queryCounties();
+//                        }
+//                    });
+//                }
+//            }
+//            @Override
+//            public void onFailure(Call call, IOException e) {
+//                getActivity().runOnUiThread(new Runnable() {
+//                    @Override
+//                    public void run() {
+//                        closeProgressDialog();
+//                        Toast.makeText(getContext(),"加载失败",Toast.LENGTH_SHORT).show();
+//                    }
+//                });
+//            }
+//        });
+//
+//    }
 
+    private void queryArea(){
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(HttpAPIS.HOST)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        httpAPIS = retrofit.create(HttpAPIS.class);
         showProgressDialog();
-        HttpUtil.sendOkHttpRequest(address, new Callback() {
+        Call<List<Province>> call = httpAPIS.getProvince();
+        call.enqueue(new Callback<List<Province>>() {
             @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                String responseText = response.body().string();
-                boolean result = false;
-                if ("province".equals(type)){
-                    result = Utility.handleProvinceResponse(responseText);
-                }else if ("city".equals(type)){
-                    result = Utility.handleCityResponse(responseText,selectedProvince.getId());
-                }else if ("county".equals(type)){
-                    result = Utility.handleCountyResponse(responseText,selectedCity.getId());
-                }
-                if (result){
-                    getActivity().runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            closeProgressDialog();
-                            if ("province".equals(type))
-                                queryProvinces();
-                            else if ("city".equals(type))
-                                queryCities();
-                            else if ("county".equals(type))
-                                queryCounties();
-                        }
-                    });
-                }
+            public void onResponse(Call<List<Province>> call, Response<List<Province>> response) {
+                Utility.handleProvinceResponse(response.body());
+                queryProvinces();
             }
+
             @Override
-            public void onFailure(Call call, IOException e) {
+            public void onFailure(Call<List<Province>> call, Throwable t) {
                 getActivity().runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -211,8 +245,152 @@ public class ChooseAreaFragment extends Fragment {
                 });
             }
         });
-
     }
+
+    private void queryArea(int provinceID){
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(HttpAPIS.HOST)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        httpAPIS = retrofit.create(HttpAPIS.class);
+        showProgressDialog();
+        Call<List<City>> call = httpAPIS.getCity(provinceID);
+        call.enqueue(new Callback<List<City>>() {
+            @Override
+            public void onResponse(Call<List<City>> call, Response<List<City>> response) {
+                Utility.handleCityResponse(response.body(),selectedProvince.getId());
+                queryCities();
+            }
+
+            @Override
+            public void onFailure(Call<List<City>> call, Throwable t) {
+                getActivity().runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        closeProgressDialog();
+                        Toast.makeText(getContext(),"加载失败",Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        });
+    }
+
+    private void queryArea(int provinceID, int cityID){
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(HttpAPIS.HOST)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        httpAPIS = retrofit.create(HttpAPIS.class);
+        showProgressDialog();
+        Call<List<County>> call = httpAPIS.getCounty(provinceID,cityID);
+        call.enqueue(new Callback<List<County>>() {
+            @Override
+            public void onResponse(Call<List<County>> call, Response<List<County>> response) {
+                Utility.handleCountyResponse(response.body(),selectedCity.getId());
+                queryCounties();
+            }
+
+            @Override
+            public void onFailure(Call<List<County>> call, Throwable t) {
+                getActivity().runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        closeProgressDialog();
+                        Toast.makeText(getContext(),"加载失败",Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        });
+    }
+//    private void queryArea(int provinceCode){
+//
+//        showProgressDialog();
+//        HttpUtil.sendOkHttpRequest(address, new Callback() {
+//            @Override
+//            public void onResponse(Call call, Response response) throws IOException {
+//                String responseText = response.body().string();
+//                boolean result = false;
+//                if ("province".equals(type)){
+//                    result = Utility.handleProvinceResponse(responseText);
+//                }else if ("city".equals(type)){
+//                    result = Utility.handleCityResponse(responseText,selectedProvince.getId());
+//                }else if ("county".equals(type)){
+//                    result = Utility.handleCountyResponse(responseText,selectedCity.getId());
+//                }
+//                if (result){
+//                    getActivity().runOnUiThread(new Runnable() {
+//                        @Override
+//                        public void run() {
+//                            closeProgressDialog();
+//                            if ("province".equals(type))
+//                                queryProvinces();
+//                            else if ("city".equals(type))
+//                                queryCities();
+//                            else if ("county".equals(type))
+//                                queryCounties();
+//                        }
+//                    });
+//                }
+//            }
+//            @Override
+//            public void onFailure(Call call, IOException e) {
+//                getActivity().runOnUiThread(new Runnable() {
+//                    @Override
+//                    public void run() {
+//                        closeProgressDialog();
+//                        Toast.makeText(getContext(),"加载失败",Toast.LENGTH_SHORT).show();
+//                    }
+//                });
+//            }
+//        });
+//
+//    }
+//
+//    private void queryArea(int provinceCode,int cityCode){
+//
+//        showProgressDialog();
+//        HttpUtil.sendOkHttpRequest(address, new Callback() {
+//            @Override
+//            public void onResponse(Call call, Response response) throws IOException {
+//                String responseText = response.body().string();
+//                boolean result = false;
+//                if ("province".equals(type)){
+//                    result = Utility.handleProvinceResponse(responseText);
+//                }else if ("city".equals(type)){
+//                    result = Utility.handleCityResponse(responseText,selectedProvince.getId());
+//                }else if ("county".equals(type)){
+//                    result = Utility.handleCountyResponse(responseText,selectedCity.getId());
+//                }
+//                if (result){
+//                    getActivity().runOnUiThread(new Runnable() {
+//                        @Override
+//                        public void run() {
+//                            closeProgressDialog();
+//                            if ("province".equals(type))
+//                                queryProvinces();
+//                            else if ("city".equals(type))
+//                                queryCities();
+//                            else if ("county".equals(type))
+//                                queryCounties();
+//                        }
+//                    });
+//                }
+//            }
+//            @Override
+//            public void onFailure(Call call, IOException e) {
+//                getActivity().runOnUiThread(new Runnable() {
+//                    @Override
+//                    public void run() {
+//                        closeProgressDialog();
+//                        Toast.makeText(getContext(),"加载失败",Toast.LENGTH_SHORT).show();
+//                    }
+//                });
+//            }
+//        });
+//
+//    }
 
     private void showProgressDialog(){
         if (progressDialog == null){
