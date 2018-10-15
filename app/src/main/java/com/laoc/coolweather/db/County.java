@@ -2,10 +2,6 @@ package com.laoc.coolweather.db;
 
 import org.litepal.crud.DataSupport;
 
-/**
- * Created by chenhao7 on 2018/4/3.
- */
-
 public class County extends DataSupport {
     private int id;
     private String name;
